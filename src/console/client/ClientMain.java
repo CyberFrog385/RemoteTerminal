@@ -49,7 +49,7 @@ public class ClientMain {
 			  ObjectInputStream is = new ObjectInputStream(s.getInputStream());
 			  ObjectOutputStream os = new ObjectOutputStream(s.getOutputStream())) {
 			Session ses = new Session();
-			if ( openSession( ses, is, os, in )) {
+			if ( openSession( ses, is, in )) {
 				try {
 					while (true) {
 						Message msg = getCommand(ses, in);
@@ -66,9 +66,8 @@ public class ClientMain {
 		}
 	}
 
-	static boolean openSession(Session ses, ObjectInputStream is, ObjectOutputStream os, Scanner in)
+	static boolean openSession(Session ses, ObjectInputStream is, Scanner in)
 			throws IOException, ClassNotFoundException {
-		os.writeObject( new MessageConnect());
 		MessageConnectResult msg = (MessageConnectResult) is.readObject();
 		if (msg.Error()== false ) {
 			System.err.println("connected");
