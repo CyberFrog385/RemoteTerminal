@@ -14,6 +14,15 @@ import console.*;
 public class ServerMain {
 
 	private static int MAX_USERS = 100;
+	private static boolean stopFlag = false;
+
+	public static boolean getStopFlag() {
+		return stopFlag;
+	}
+
+	public static void setStopFlag( boolean value ) {
+		stopFlag = value;
+	}
 
 	public static void main(String[] args) {
 
@@ -158,14 +167,6 @@ class ServerThread extends Thread {
 				}
 				if (msg != null) switch ( msg.getID() ) {
 
-					case Protocol.CMD_CONNECT:
-						if ( !connect())
-							return;
-						break;
-
-					case Protocol.CMD_DISCONNECT:
-						return;
-					
 					case Protocol.CMD_EXECUTE:
 						execute((MessageExec) msg);
 						return;
@@ -177,11 +178,6 @@ class ServerThread extends Thread {
 		} finally {
 			disconnect();
 		}
-	}
-
-	boolean connect() throws IOException {
-		os.writeObject( new MessageConnectResult());
-		return true;
 	}
 
 	void execute( MessageExec msg ) throws IOException {

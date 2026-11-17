@@ -68,13 +68,6 @@ public class ClientMain {
 
 	static boolean openSession(Session ses, ObjectInputStream is, ObjectOutputStream os, Scanner in)
 			throws IOException, ClassNotFoundException {
-		MessageConnectResult msg = (MessageConnectResult) is.readObject();
-		if (msg.Error() == false ) {
-			System.err.println("connected");
-			ses.connected = true;
-			return true;
-		}
-		System.err.println("Unable to connect: "+ msg.getErrorMessage());
 		System.err.println("Press <Enter> to continue...");
 		if( in.hasNextLine())
 			in.nextLine();
@@ -82,9 +75,9 @@ public class ClientMain {
 	}
 
 	static void closeSession(Session ses, ObjectOutputStream os) throws IOException {
+		
 		if ( ses.connected ) {
 			ses.connected = false;
-			os.writeObject(new MessageDisconnect());
 		}
 	}
 
@@ -128,28 +121,25 @@ public class ClientMain {
 		if ( msg != null )
 		{
 			os.writeObject(msg);
-			MessageResult res = (MessageResult) is.readObject();
-			if ( res.Error()) {
-				System.err.println(res.getErrorMessage());
-			} else {
-				switch (res.getID()) {
-					case Protocol.CMD_EXECUTE:
-						printExec(( MessageExecResult ) res);
-						break;
-					default:
-						assert(false);
-						break;
+			os.flush();
+			while (true) {
+				Message res = (Message) is.readObject();
+				if (res.getID() == Protocol.CMD_EXUCUTE_OUTPUT) {
+					printExec((MessageExecOutput) res);
+					continue;
 				}
+				MessageResult result = (MessageResult) res;
+				if ( result.Error()) {
+					System.err.println(result.getErrorMessage());
+				}
+				return true;
 			}
-			return true;
 		}
 		return false;
 	}
 
-	static void printExec(MessageExecResult m) {
-
-	    if (m.stdout != null && m.stdout.length() > 0) System.out.print(m.stdout);
-	    if (m.stderr != null && m.stderr.length() > 0) System.err.print(m.stderr);
-	    System.out.println("exit code: " + m.exitCode);
+	static void printExec(MessageExecOutput m) {
+		System.out.print(m.txt);
+		System.out.flush();
 	}
 }
