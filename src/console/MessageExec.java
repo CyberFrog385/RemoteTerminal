@@ -2,7 +2,6 @@ package console;
 
 import java.io.Serializable;
 
-
 public class MessageExec  extends Message implements Serializable {
 
 	private static final long serialVersionUID = 1L;
@@ -13,4 +12,5 @@ public class MessageExec  extends Message implements Serializable {
 		super( Protocol.CMD_EXECUTE );
 		this.command = command;
 	}
+
 }
