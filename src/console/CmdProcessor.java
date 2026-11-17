@@ -1,10 +1,5 @@
 package console;
 
-/**
- * <p>Command processor interface
- * @author Sergey Gutnikov
- * @version 1.0
- */
 public interface CmdProcessor {
 	void putHandler( String shortName, String fullName, CmdHandler handler );
 

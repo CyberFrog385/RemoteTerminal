@@ -2,31 +2,26 @@ package console;
 
 import java.util.HashMap;
 
-/**
- * <p>Command processor base class
- * @author Sergey Gutnikov
- * @version 1.0
- */
-public class CommandThread extends Thread 
+public class CommandThread extends Thread
 	implements CmdProcessor {
-	
-	protected HashMap<String, CmdHandler> smap = // short commands 
+
+	protected HashMap<String, CmdHandler> smap =
 			new HashMap<String, CmdHandler> ();
-	protected HashMap<String, CmdHandler> map =  // normal commands
+	protected HashMap<String, CmdHandler> map =
 			new HashMap<String, CmdHandler> ();
-	
-	protected static void insert( 
-			HashMap<String, CmdHandler> m, 
-			String name, CmdHandler handler ) {		
+
+	protected static void insert(
+			HashMap<String, CmdHandler> m,
+			String name, CmdHandler handler ) {
 		if ( name != null ) {
 			m.put( name, handler );
 		}
 	}
-	
+
 	@Override
 	public synchronized void putHandler(String shortName, String fullName, CmdHandler handler ) {
 		if ( shortName == null && fullName == null ) {
-			throw new IllegalArgumentException( 
+			throw new IllegalArgumentException(
 					"Bad arguments: shortName and fullName can not be null simultaneusly!" );
 		}
 		CommandThread.insert(smap, shortName, handler);
@@ -49,10 +44,10 @@ public class CommandThread extends Thread
 	public synchronized boolean command(String cmd, int[] err) {
 		CmdHandler handler = null;
 		if ( smap.containsKey( cmd )) {
-			handler = smap.get(cmd); 
+			handler = smap.get(cmd);
 		} else if ( map.containsKey( cmd )) {
-			handler = map.get(cmd); 
-		}  
+			handler = map.get(cmd);
+		}
 		if ( handler != null ) {
 			boolean res = handler.onCommand(err);
 			errorCode = err[0];
