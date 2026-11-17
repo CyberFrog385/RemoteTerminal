@@ -1,8 +1,5 @@
 package console.server;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -10,6 +7,7 @@ import java.net.SocketException;
 import java.util.Scanner;
 import java.util.TreeMap;
 import java.util.Vector;
+import java.io.*;
 
 import console.*;
 
@@ -26,26 +24,26 @@ public class ServerMain {
 			while (true) {
 				Socket sock = accept( serv );
 				if ( sock != null ) {
-					if ( ServerMain.getNumUsers() < ServerMain.MAX_USERS )
+//					if ( ServerMain.getNumUsers() < ServerMain.MAX_USERS )
 					{
 						System.err.println( sock.getInetAddress().getHostName() + " connected" );
 						ServerThread server = new ServerThread(sock);
 						server.start();
 					}
-					else
+//					else
 					{
-						System.err.println( sock.getInetAddress().getHostName() + " connection rejected" );
-						sock.close();
+//						System.err.println( sock.getInetAddress().getHostName() + " connection rejected" );
+//						sock.close();
 					}
 				}
-				if ( ServerMain.getStopFlag() ) {
-					break;
-				}
+//				if ( ServerMain.getStopFlag() ) {
+//					break;
+//				}
 			}
 		} catch (IOException e) {
 			System.err.println(e);
 		} finally {
-			stopAllUsers();
+//			stopAllUsers();
 			System.err.println("stopped");
 		}
 		try {
@@ -64,71 +62,6 @@ public class ServerMain {
 		} catch (IOException e) {
 		}
 		return null;
-	}
-
-	private static void stopAllUsers() {
-		String[] nic = getUsers();
-		for (String user : nic ) {
-			ServerThread ut = getUser( user );
-			if ( ut != null ) {
-				ut.disconnect();
-			}
-		}
-	}
-
-	private static Object syncFlags = new Object();
-	private static boolean stopFlag = false;
-	public static boolean getStopFlag() {
-		synchronized ( ServerMain.syncFlags ) {
-			return stopFlag;
-		}
-	}
-	public static void setStopFlag( boolean value ) {
-		synchronized ( ServerMain.syncFlags ) {
-			stopFlag = value;
-		}
-	}
-
-	private static Object syncUsers = new Object();
-	private static TreeMap<String, ServerThread> users =
-			new TreeMap<String, ServerThread> ();
-
-	public static ServerThread getUser( String userNic ) {
-		synchronized (ServerMain.syncUsers) {
-			return ServerMain.users.get( userNic );
-		}
-	}
-
-	public static ServerThread registerUser( String userNic, ServerThread user ) {
-		synchronized (ServerMain.syncUsers) {
-			ServerThread old = ServerMain.users.get( userNic );
-			if ( old == null ) {
-				ServerMain.users.put( userNic, user );
-			}
-			return old;
-		}
-	}
-
-	public static ServerThread setUser( String userNic, ServerThread user ) {
-		synchronized (ServerMain.syncUsers) {
-			ServerThread res = ServerMain.users.put( userNic, user );
-			if ( user == null ) {
-				ServerMain.users.remove(userNic);
-			}
-			return res;
-		}
-	}
-
-	public static String[] getUsers() {
-		synchronized (ServerMain.syncUsers) {
-			return ServerMain.users.keySet().toArray( new String[0] );
-		}
-	}
-
-	public static int getNumUsers() {
-		synchronized (ServerMain.syncUsers) {
-			return ServerMain.users.keySet().size();
-		}
 	}
 }
 
@@ -176,37 +109,17 @@ class ServerStopThread extends CommandThread {
 }
 
 class ServerThread extends Thread {
+	File location = new File("/");
+	Process process;
+	OutputStream pos;
+	InputStream pis;
+	InputStream pes;
+    
 
 	private Socket              sock;
 	private ObjectOutputStream 	os;
 	private ObjectInputStream 	is;
 	private InetAddress 		addr;
-
-	private String userNic = null;
-	private String userFullName;
-
-	private Object syncLetters = new Object();
-	private Vector<String> letters = null;
-	public void addLetter( String letter ) {
-		synchronized ( syncLetters ) {
-			if ( letters == null ) {
-				letters = new Vector<String> ();
-			}
-			letters.add( letter );
-		}
-	}
-	public String[] getLetters() {
-		synchronized ( syncLetters ) {
-			String[] lts = new String[0];
-			synchronized ( syncLetters ) {
-				if ( letters != null ) {
-					lts = letters.toArray( lts );
-					letters = null;
-				}
-			}
-			return lts;
-		}
-	}
 
 
 	public ServerThread(Socket s) throws IOException {
@@ -220,34 +133,43 @@ class ServerThread extends Thread {
 
 	public void run() {
 		try {
+			ProcessBuilder builder = new ProcessBuilder();
+		    builder.directory(location);
+		    builder.command("sh", "-i", "-l");
+		    
+		    process = builder.start();
+
+		    pos = process.getOutputStream();
+	        pis = process.getInputStream();
+	        pes = process.getErrorStream();
+	        
 			while ( true ) {
 				Message msg = null;
 				try {
-					msg = ( Message ) is.readObject();
+					if (is.available() > 0)
+						msg = ( Message ) is.readObject();
+					if(pis.available() > 0)
+						sendExecRes();
 				} catch (IOException e) {
-				} catch (ClassNotFoundException e) {
+					e.printStackTrace();
+				} 
+					catch (ClassNotFoundException e) {
+					e.printStackTrace();
 				}
 				if (msg != null) switch ( msg.getID() ) {
 
 					case Protocol.CMD_CONNECT:
-						if ( !connect( (MessageConnect) msg ))
+						if ( !connect())
 							return;
 						break;
 
 					case Protocol.CMD_DISCONNECT:
 						return;
-
-					case Protocol.CMD_USER:
-						user(( MessageUser ) msg);
-						break;
-
-					case Protocol.CMD_CHECK_MAIL:
-						checkMail(( MessageCheckMail ) msg );
-						break;
-
-					case Protocol.CMD_LETTER:
-						letter(( MessageLetter ) msg );
-						break;
+					
+					case Protocol.CMD_EXECUTE:
+						execute((MessageExec) msg);
+						return;
+					
 				}
 			}
 		} catch (IOException e) {
@@ -257,57 +179,49 @@ class ServerThread extends Thread {
 		}
 	}
 
-	boolean connect( MessageConnect msg ) throws IOException {
+	boolean connect() throws IOException {
+		os.writeObject( new MessageConnectResult());
+		return true;
+	}
 
-		ServerThread old = register( msg.userNic, msg.userFullName );
-		if ( old == null )
-		{
-			os.writeObject( new MessageConnectResult());
-			return true;
-		} else {
-			os.writeObject( new MessageConnectResult(
-				"User " + old.userFullName + " already connected as " + userNic ));
-			return false;
+	void execute( MessageExec msg ) throws IOException {
+		boolean success = true;
+		try(OutputStreamWriter writerS = new OutputStreamWriter(pos)) {
+        	writerS.write(msg.command);
+        }
+		catch (IOException e) {
+			success = false;
+			os.writeObject( new MessageExecResult(e.toString()));
 		}
+		if(success)
+			os.writeObject( new MessageExecResult());
 	}
 
-	void letter( MessageLetter msg ) throws IOException {
-
-		ServerThread user = ServerMain.getUser( msg.usrNic );
-		if ( user == null )
-		{
-			os.writeObject( new MessageLetterResult(
-					"User " + msg.usrNic + " is not found" ));
-		} else {
-			user.addLetter( userNic + ": " + msg.txt );
-			os.writeObject( new MessageLetterResult());
-		}
+	public String convertStreamToString(InputStream is_to_convert) throws IOException  {
+		 int bufferSize = 1024;
+		 char[] buffer = new char[bufferSize];
+		 StringBuilder out = new StringBuilder();
+		 Reader in = new InputStreamReader(is_to_convert);
+		 for (int numRead; (numRead = in.read(buffer, 0, buffer.length)) > 0; ) {
+		     out.append(buffer, 0, numRead);
+		 }
+		 return out.toString();
+	}
+	
+	void sendExecRes() throws IOException  {
+		os.writeObject( new MessageExecOutput(convertStreamToString(pis)));
 	}
 
-	void user( MessageUser msg ) throws IOException {
-
-		String[] nics = ServerMain.getUsers();
-		if ( nics != null )
-			os.writeObject( new MessageUserResult( nics ));
-		else
-			os.writeObject( new MessageUserResult( "Unable to get users list" ));
-	}
-
-	void checkMail( MessageCheckMail msg ) throws IOException {
-
-		String[] lts = getLetters();
-		if ( lts != null )
-			os.writeObject( new MessageCheckMailResult( lts ));
-		else
-			os.writeObject( new MessageCheckMailResult( "Unable to get mail" ));
-	}
 
 	private boolean disconnected = false;
 	public void disconnect() {
 		if ( ! disconnected )
 		try {
 			System.err.println( addr.getHostName() + " disconnected" );
-			unregister();
+			pos.flush();
+	        pos.close();
+	        pis.close();
+	        pes.close();
 			os.close();
 			is.close();
 			sock.close();
@@ -319,23 +233,5 @@ class ServerThread extends Thread {
 		}
 	}
 
-	private void unregister() {
-		if ( userNic != null ) {
-			ServerMain.setUser( userNic, null );
-			userNic = null;
-		}
-	}
-
-	private ServerThread register( String nic, String name ) {
-		ServerThread old = ServerMain.registerUser( nic, this );
-		if ( old == null ) {
-			if ( userNic == null ) {
-				userNic = nic;
-				userFullName = name;
-				System.err.println("User \'"+ name+ "\' registered as \'"+ nic + "\'");
-			}
-		}
-		return old;
-	}
 }
 
