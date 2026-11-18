@@ -133,79 +133,72 @@ class ServerThread extends Thread {
 
 	public ServerThread(Socket s) throws IOException {
 		sock = s;
-		s.setSoTimeout(1000);
 		os = new ObjectOutputStream( s.getOutputStream() );
 		is = new ObjectInputStream( s.getInputStream());
 		addr = s.getInetAddress();
 		this.setDaemon(true);
 	}
 
+	static final String SENTINEL = "__console_done__";
+
 	public void run() {
 		try {
 			ProcessBuilder builder = new ProcessBuilder();
 		    builder.directory(location);
-		    builder.command("sh", "-i", "-l");
-		    
+		    builder.command("sh", "-l");
+		    builder.redirectErrorStream(true);
+
 		    process = builder.start();
 
 		    pos = process.getOutputStream();
 	        pis = process.getInputStream();
 	        pes = process.getErrorStream();
-	        
+
+			Thread output = new Thread( new Runnable() {
+				public void run() { sendExecRes(); }
+			});
+			output.setDaemon(true);
+			output.start();
+
 			while ( true ) {
-				Message msg = null;
-				try {
-					if (is.available() > 0)
-						msg = ( Message ) is.readObject();
-					if(pis.available() > 0)
-						sendExecRes();
-				} catch (IOException e) {
-					e.printStackTrace();
-				} 
-					catch (ClassNotFoundException e) {
-					e.printStackTrace();
-				}
-				if (msg != null) switch ( msg.getID() ) {
+				Message msg = ( Message ) is.readObject();
+				switch ( msg.getID() ) {
 
 					case Protocol.CMD_EXECUTE:
 						execute((MessageExec) msg);
-						return;
-					
+						break;
+
 				}
 			}
 		} catch (IOException e) {
 			System.err.print("Disconnect...");
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
 		} finally {
 			disconnect();
 		}
 	}
 
 	void execute( MessageExec msg ) throws IOException {
-		boolean success = true;
-		try(OutputStreamWriter writerS = new OutputStreamWriter(pos)) {
-        	writerS.write(msg.command);
-        }
-		catch (IOException e) {
-			success = false;
-			os.writeObject( new MessageExecResult(e.toString()));
-		}
-		if(success)
-			os.writeObject( new MessageExecResult());
+		pos.write( ( msg.command + "\n" ).getBytes() );
+		pos.write( ( "echo " + SENTINEL + "\n" ).getBytes() );
+		pos.flush();
 	}
 
-	public String convertStreamToString(InputStream is_to_convert) throws IOException  {
-		 int bufferSize = 1024;
-		 char[] buffer = new char[bufferSize];
-		 StringBuilder out = new StringBuilder();
-		 Reader in = new InputStreamReader(is_to_convert);
-		 for (int numRead; (numRead = in.read(buffer, 0, buffer.length)) > 0; ) {
-		     out.append(buffer, 0, numRead);
-		 }
-		 return out.toString();
-	}
-	
-	void sendExecRes() throws IOException  {
-		os.writeObject( new MessageExecOutput(convertStreamToString(pis)));
+	void sendExecRes() {
+		try {
+			BufferedReader reader = new BufferedReader( new InputStreamReader(pis) );
+			String line;
+			while ( ( line = reader.readLine() ) != null ) {
+				synchronized ( os ) {
+					if ( line.equals( SENTINEL ) )
+						os.writeObject( new MessageExecResult() );
+					else
+						os.writeObject( new MessageExecOutput( line + "\n" ) );
+				}
+			}
+		} catch (IOException e) {
+		}
 	}
 
 

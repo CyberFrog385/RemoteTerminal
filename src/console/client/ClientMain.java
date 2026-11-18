@@ -48,6 +48,7 @@ public class ClientMain {
 		try ( Scanner in = new Scanner(System.in);
 			  ObjectInputStream is = new ObjectInputStream(s.getInputStream());
 			  ObjectOutputStream os = new ObjectOutputStream(s.getOutputStream())) {
+			os.flush();
 			Session ses = new Session();
 			if ( openSession( ses, is, os, in )) {
 				try {
@@ -71,7 +72,8 @@ public class ClientMain {
 		System.err.println("Press <Enter> to continue...");
 		if( in.hasNextLine())
 			in.nextLine();
-		return false;
+		ses.connected = true;
+		return true;
 	}
 
 	static void closeSession(Session ses, ObjectOutputStream os) throws IOException {
